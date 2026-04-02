@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Una's Endless Runner</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Courier New',monospace}
+canvas{display:block;border:1px solid #21262d;border-radius:4px}
+#ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);color:#58a6ff;font-size:14px;text-align:center;pointer-events:none;z-index:10}
+#milestone{position:absolute;top:60px;left:50%;transform:translateX(-50%);color:#7ee787;font-size:16px;text-align:center;pointer-events:none;z-index:10;opacity:0;transition:opacity 0.5s;text-shadow:0 0 10px #7ee787;max-width:90%}
+#milestone.show{opacity:1}
+#start-msg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#8b949e;font-size:18px;text-align:center;pointer-events:none;z-index:10}
+</style>
+</head>
+<body>
+<div id="ui"><span id="score">0</span> | HI: <span id="hi">0</span></div>
+<div id="milestone"></div>
+<div id="start-msg">Press SPACE or tap to start</div>
+<canvas id="game"></canvas>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const W=800,H=300;
+canvas.width=W;canvas.height=H;
+
+// Colors
+const C={bg:'#0d1117',ground:'#21262d',player:'#58a6ff',obstacle:'#ff7b72',particle:'#7ee787',text:'#c9d1d9',accent:'#d2a8ff',neon:'#58a6ff'};
+
+// Game state
+let state='idle',score=0,hiScore=parseInt(localStorage.getItem('unaHi')||'0'),speed=5,frame=0,dayPhase=0;
+let player={x:80,y:H-60,w:24,h:36,vy:0,grounded:true,ducking:false};
+let obstacles=[],particles=[],stars=[],buildings=[];
+let milestoneEl=document.getElementById('milestone');
+let milestoneTimer=null,currentMilestone=-1;
+let shakeX=0,shakeY=0,shakeTime=0;
+
+// Milestones: score -> message
+const milestones=[
+  {score:100,msg:"\u{1F44B} Hi, I'm Una (LING71671)"},
+  {score:300,msg:"\u{1F3AE} All in the game, all in game."},
+  {score:600,msg:"\u{1F527} AI tooling enthusiast | TypeScript & Python dev"},
+  {score:1000,msg:"\u{1F680} Creator of Open-ClaudeCode (275\u2B50)"},
+  {score:1500,msg:"\u{1F4A1} Building ChaosCoder, SMA-OS, and more"},
+  {score:2200,msg:"\u{1F4CD} Paradise | Since 2025"},
+  {score:3000,msg:"\u2B50 Thanks for visiting my profile!"}
+];
+
+document.getElementById('hi').textContent=hiScore;
+
+// Stars background
+for(let i=0;i<60;i++) stars.push({x:Math.random()*W,y:Math.random()*(H-50),s:Math.random()*2+0.5,b:Math.random()});
+// Buildings (parallax)
+for(let i=0;i<12;i++) buildings.push({x:i*80,w:40+Math.random()*30,h:30+Math.random()*60});
+
+function reset(){
+  player={x:80,y:H-60,w:24,h:36,vy:0,grounded:true,ducking:false};
+  obstacles=[];particles=[];score=0;speed=5;frame=0;currentMilestone=-1;
+  document.getElementById('score').textContent='0';
+}
+
+function jump(){
+  if(player.grounded&&!player.ducking){player.vy=-12;player.grounded=false;spawnParticles(player.x+player.w/2,player.y+player.h,5,C.particle);}
+}
+function duck(v){player.ducking=v;if(v&&player.grounded){player.h=20;player.y=H-44;}else if(!v&&player.grounded){player.h=36;player.y=H-60;}}
+
+function spawnParticles(x,y,n,c){for(let i=0;i<n;i++) particles.push({x,y,vx:(Math.random()-0.5)*4,vy:-Math.random()*3-1,life:30,c,s:Math.random()*3+1});}
+
+function spawnObstacle(){
+  const type=Math.random()>0.5?'ground':'air';
+  if(type==='ground'){
+    const w=15+Math.random()*20,h=20+Math.random()*25;
+    obstacles.push({x:W,y:H-40-h,w,h,type:'ground'});
+  }else{
+    const w=40+Math.random()*20,h=12;
+    obstacles.push({x:W,y:H-80-Math.random()*30,w,h,type:'air'});
+  }
+}
+
+function showMilestone(msg){
+  milestoneEl.textContent=msg;
+  milestoneEl.classList.add('show');
+  clearTimeout(milestoneTimer);
+  milestoneTimer=setTimeout(()=>milestoneEl.classList.remove('show'),3000);
+}
+
+function checkMilestones(){
+  for(let i=milestones.length-1;i>=0;i--){
+    if(score>=milestones[i].score&&i>currentMilestone){currentMilestone=i;showMilestone(milestones[i].msg);break;}
+  }
+}
+
+function update(){
+  if(state!=='running')return;
+  frame++;
+  score=Math.floor(frame/3);
+  speed=5+score*0.003;
+  if(speed>14)speed=14;
+  document.getElementById('score').textContent=score;
+  checkMilestones();
+
+  // Day/night cycle
+  dayPhase=(dayPhase+0.0003)%1;
+
+  // Player physics
+  if(!player.grounded){player.vy+=0.6;player.y+=player.vy;if(player.y>=H-60){player.y=H-60;player.vy=0;player.grounded=true;spawnParticles(player.x+player.w/2,H-40,3,C.particle);}}
+  if(player.ducking&&player.grounded){player.h=20;player.y=H-44;}else if(!player.ducking&&player.grounded){player.h=36;player.y=H-60;}
+
+  // Obstacles
+  if(frame%Math.max(30,Math.floor(80-speed*3))===0) spawnObstacle();
+  for(let i=obstacles.length-1;i>=0;i--){
+    obstacles[i].x-=speed;
+    if(obstacles[i].x+obstacles[i].w<0) obstacles.splice(i,1);
+  }
+
+  // Collision (AABB)
+  const px=player.x+4,py=player.y+4,pw=player.w-8,ph=player.h-8;
+  for(const o of obstacles){
+    if(px<o.x+o.w&&px+pw>o.x&&py<o.y+o.h&&py+ph>o.y){gameOver();return;}
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){
+    particles[i].x+=particles[i].vx;particles[i].y+=particles[i].vy;particles[i].vy+=0.1;particles[i].life--;
+    if(particles[i].life<=0) particles.splice(i,1);
+  }
+
+  // Buildings parallax
+  for(const b of buildings){b.x-=speed*0.3;if(b.x+b.w<0){b.x=W;b.h=30+Math.random()*60;}}
+
+  // Screen shake decay
+  if(shakeTime>0){shakeTime--;shakeX=(Math.random()-0.5)*shakeTime*0.5;shakeY=(Math.random()-0.5)*shakeTime*0.5;}else{shakeX=0;shakeY=0;}
+}
+
+function gameOver(){
+  state='dead';
+  shakeTime=15;
+  spawnParticles(player.x+player.w/2,player.y+player.h/2,20,C.obstacle);
+  if(score>hiScore){hiScore=score;localStorage.setItem('unaHi',hiScore);document.getElementById('hi').textContent=hiScore;}
+}
+
+function draw(){
+  ctx.save();
+  ctx.translate(shakeX,shakeY);
+
+  // Background
+  const night=Math.sin(dayPhase*Math.PI*2)*0.5+0.5;
+  const bgR=Math.floor(13+night*5),bgG=Math.floor(17+night*5),bgB=Math.floor(23+night*10);
+  ctx.fillStyle=`rgb(${bgR},${bgG},${bgB})`;
+  ctx.fillRect(0,0,W,H);
+
+  // Stars
+  for(const s of stars){
+    const twinkle=Math.sin(frame*0.05+s.b*10)*0.5+0.5;
+    ctx.fillStyle=`rgba(200,220,255,${twinkle*0.8})`;
+    ctx.fillRect(s.x,s.y,s.s,s.s);
+  }
+
+  // Buildings (parallax)
+  for(const b of buildings){
+    ctx.fillStyle=`rgba(30,40,60,0.6)`;
+    ctx.fillRect(b.x,H-40-b.h,b.w,b.h);
+    // Windows
+    ctx.fillStyle=`rgba(88,166,255,${0.1+night*0.2})`;
+    for(let wy=H-40-b.h+5;wy<H-45;wy+=10){for(let wx=b.x+5;wx<b.x+b.w-5;wx+=8){ctx.fillRect(wx,wy,3,4);}}
+  }
+
+  // Ground
+  ctx.fillStyle=C.ground;
+  ctx.fillRect(0,H-40,W,40);
+  ctx.strokeStyle='#30363d';
+  ctx.beginPath();ctx.moveTo(0,H-40);ctx.lineTo(W,H-40);ctx.stroke();
+  // Ground detail
+  ctx.fillStyle='#161b22';
+  for(let gx=(frame*speed*-0.5)%20;gx<W;gx+=20){ctx.fillRect(gx,H-38,10,1);}
+
+  // Obstacles
+  for(const o of obstacles){
+    if(o.type==='ground'){
+      // Spiky ground obstacle
+      ctx.fillStyle=C.obstacle;
+      ctx.beginPath();
+      ctx.moveTo(o.x,o.y+o.h);ctx.lineTo(o.x+o.w/2,o.y);ctx.lineTo(o.x+o.w,o.y+o.h);ctx.closePath();ctx.fill();
+      // Glow
+      ctx.shadowColor=C.obstacle;ctx.shadowBlur=8;ctx.fill();ctx.shadowBlur=0;
+    }else{
+      // Air obstacle (flying drone)
+      ctx.fillStyle=C.accent;
+      ctx.fillRect(o.x,o.y,o.w,o.h);
+      ctx.fillStyle=C.neon;
+      ctx.fillRect(o.x+o.w/2-3,o.y-4,6,4);
+      ctx.shadowColor=C.accent;ctx.shadowBlur=6;ctx.fillRect(o.x,o.y,o.w,o.h);ctx.shadowBlur=0;
+    }
+  }
+
+  // Player
+  const px=player.x,py=player.y;
+  // Body
+  ctx.fillStyle=C.player;
+  ctx.shadowColor=C.neon;ctx.shadowBlur=10;
+  if(player.ducking){
+    ctx.fillRect(px,py,player.w,player.h);
+  }else{
+    // Head
+    ctx.fillRect(px+4,py,16,12);
+    // Body
+    ctx.fillRect(px+6,py+12,12,14);
+    // Legs (animated)
+    const legOff=player.grounded?Math.sin(frame*0.3)*4:2;
+    ctx.fillRect(px+6,py+26,5,10+legOff);
+    ctx.fillRect(px+13,py+26,5,10-legOff);
+    // Eyes
+    ctx.fillStyle='#0d1117';
+    ctx.fillRect(px+14,py+4,4,4);
+  }
+  ctx.shadowBlur=0;
+
+  // Particles
+  for(const p of particles){
+    ctx.fillStyle=p.c;
+    ctx.globalAlpha=p.life/30;
+    ctx.fillRect(p.x,p.y,p.s,p.s);
+  }
+  ctx.globalAlpha=1;
+
+  // Game over overlay
+  if(state==='dead'){
+    ctx.fillStyle='rgba(13,17,23,0.7)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=C.obstacle;
+    ctx.font='bold 36px Courier New';
+    ctx.textAlign='center';
+    ctx.fillText('GAME OVER',W/2,H/2-20);
+    ctx.fillStyle=C.text;
+    ctx.font='18px Courier New';
+    ctx.fillText(`Score: ${score}`,W/2,H/2+20);
+    ctx.fillText('Press SPACE or tap to retry',W/2,H/2+50);
+  }
+
+  // Speed indicator
+  ctx.fillStyle='rgba(88,166,255,0.3)';
+  ctx.font='10px Courier New';
+  ctx.textAlign='left';
+  ctx.fillText(`SPEED: ${speed.toFixed(1)}`,10,H-10);
+
+  ctx.restore();
+}
+
+function gameLoop(){
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+// Input
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='ArrowUp'){
+    e.preventDefault();
+    if(state==='idle'){state='running';document.getElementById('start-msg').style.display='none';reset();jump();}
+    else if(state==='running') jump();
+    else if(state==='dead'){state='running';reset();}
+  }
+  if(e.code==='ArrowDown'){e.preventDefault();if(state==='running') duck(true);}
+});
+document.addEventListener('keyup',e=>{if(e.code==='ArrowDown') duck(false);});
+
+// Touch
+let touchStart=0;
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();touchStart=Date.now();
+  if(state==='idle'){state='running';document.getElementById('start-msg').style.display='none';reset();jump();}
+  else if(state==='running') jump();
+  else if(state==='dead'){state='running';reset();}
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  if(Date.now()-touchStart>300&&state==='running') duck(false);
+});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(state==='running') duck(true);},{passive:false});
+
+// Start
+gameLoop();
+</script>
+</body>
+</html>
