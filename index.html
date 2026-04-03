@@ -17,7 +17,7 @@ canvas{display:block;border:1px solid #21262d;border-radius:4px}
 <body>
 <div id="ui"><span id="score">0</span> | HI: <span id="hi">0</span></div>
 <div id="milestone"></div>
-<div id="start-msg">Press SPACE or tap to start</div>
+<div id="start-msg" style="display:none">Press SPACE or tap to start</div>
 <canvas id="game"></canvas>
 <script>
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
@@ -28,7 +28,7 @@ canvas.width=W;canvas.height=H;
 const C={bg:'#0d1117',ground:'#21262d',player:'#58a6ff',obstacle:'#ff7b72',particle:'#7ee787',text:'#c9d1d9',accent:'#d2a8ff',neon:'#58a6ff'};
 
 // Game state
-let state='idle',score=0,hiScore=parseInt(localStorage.getItem('unaHi')||'0'),speed=5,frame=0,dayPhase=0;
+let state='running',score=0,hiScore=parseInt(localStorage.getItem('unaHi')||'0'),speed=5,frame=0,dayPhase=0;
 let player={x:80,y:H-60,w:24,h:36,vy:0,grounded:true,ducking:false};
 let obstacles=[],particles=[],stars=[],buildings=[];
 let milestoneEl=document.getElementById('milestone');
@@ -256,7 +256,7 @@ function gameLoop(){
 document.addEventListener('keydown',e=>{
   if(e.code==='Space'||e.code==='ArrowUp'){
     e.preventDefault();
-    if(state==='idle'){state='running';document.getElementById('start-msg').style.display='none';reset();jump();}
+    reset();jump();
     else if(state==='running') jump();
     else if(state==='dead'){state='running';reset();}
   }
@@ -268,7 +268,7 @@ document.addEventListener('keyup',e=>{if(e.code==='ArrowDown') duck(false);});
 let touchStart=0;
 canvas.addEventListener('touchstart',e=>{
   e.preventDefault();touchStart=Date.now();
-  if(state==='idle'){state='running';document.getElementById('start-msg').style.display='none';reset();jump();}
+  reset();jump();
   else if(state==='running') jump();
   else if(state==='dead'){state='running';reset();}
 },{passive:false});
